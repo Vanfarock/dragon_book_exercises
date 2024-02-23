@@ -1,7 +1,16 @@
 pub fn a(input: &str) -> Result<(), String> {
     let lookahead_index = 0;
 
-    s_a(input, lookahead_index).map(|_| ())
+    match s_a(input, lookahead_index) {
+        Ok(last_lookahead_index) => {
+            if input.len() > last_lookahead_index {
+                Err("Syntax Error: Expression finished earlier than expected".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        Err(err) => Err(format!("Syntax Error: {}", err)),
+    }
 }
 
 fn s_a(input: &str, mut lookahead_index: usize) -> Result<usize, String> {
@@ -17,10 +26,10 @@ fn s_a(input: &str, mut lookahead_index: usize) -> Result<usize, String> {
                 lookahead_index += 1;
                 Ok(lookahead_index)
             }
-            _ => Err("Syntax Error".to_string()),
+            _ => Err(format!("Invalid token at position {}", lookahead_index)),
         }
     } else {
-        Err("Syntax Error".to_string())
+        Err(format!("Expected more tokens"))
     }
 }
 
@@ -35,7 +44,7 @@ mod tests {
     #[case("++++aaaaa")]
     #[case("+-aaa")]
     #[case("+++--+-+-+-+-+++-a-aaaaaaaaaaaaaaaaaa")]
-    #[case("-aaa")]
+    #[case("-aa")]
     fn test_2_4_1_valid(#[case] input: &str) -> Result<(), String> {
         assert_eq!(a(input)?, ());
 
@@ -43,17 +52,18 @@ mod tests {
     }
 
     #[rstest]
-    #[case("++aa")]
-    #[case("+a")]
-    #[case("+ab")]
-    #[case("+ba")]
-    #[case("--aa")]
-    #[case("-a")]
-    #[case("-ab")]
-    #[case("-ba")]
-    #[case("b")]
-    fn test_2_4_1_invalid(#[case] input: &str) -> Result<(), String> {
-        assert_eq!(a(input).unwrap_err(), "Syntax Error".to_string());
+    #[case("++aa", "Syntax Error: Expected more tokens")]
+    #[case("+a", "Syntax Error: Expected more tokens")]
+    #[case("+ab", "Syntax Error: Invalid token at position 2")]
+    #[case("+ba", "Syntax Error: Invalid token at position 1")]
+    #[case("--aa", "Syntax Error: Expected more tokens")]
+    #[case("-a", "Syntax Error: Expected more tokens")]
+    #[case("-ab", "Syntax Error: Invalid token at position 2")]
+    #[case("-ba", "Syntax Error: Invalid token at position 1")]
+    #[case("aa", "Syntax Error: Expression finished earlier than expected")]
+    #[case("b", "Syntax Error: Invalid token at position 0")]
+    fn test_2_4_1_invalid(#[case] input: &str, #[case] error_message: &str) -> Result<(), String> {
+        assert_eq!(a(input).unwrap_err(), error_message.to_string());
 
         Ok(())
     }
