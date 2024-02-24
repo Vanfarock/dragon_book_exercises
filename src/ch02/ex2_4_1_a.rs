@@ -1,38 +1,81 @@
-pub fn a(input: &str) -> Result<(), String> {
+#[derive(Debug, PartialEq)]
+enum Token {
+    A,
+    Plus,
+    Minus,
+    Epsilon,
+    Invalid,
+}
+
+pub struct ParserA {
+    input: Vec<char>,
+    lookahead_index: usize,
+}
+
+impl ParserA {
     // Recursive-descent parser for the following grammar:
     // S := +SS | -SS | a
 
-    let lookahead_index = 0;
+    pub fn new(input: &str) -> Self {
+        ParserA {
+            input: input.chars().collect(),
+            lookahead_index: 0,
+        }
+    }
 
-    match s_a(input, lookahead_index) {
-        Ok(last_lookahead_index) => {
-            if input.len() > last_lookahead_index {
-                Err("Syntax Error: Expression finished earlier than expected".to_string())
+    pub fn parse(&mut self) -> Result<(), String> {
+        let is_correct = self.parse_internal()?;
+        if is_correct {
+            if self.lookahead_index < self.input.len() {
+                Err("Syntax error: Invalid input".to_string())
             } else {
                 Ok(())
             }
+        } else {
+            Err("Syntax error: Invalid input".to_string())
         }
-        Err(err) => Err(format!("Syntax Error: {}", err)),
     }
-}
 
-fn s_a(input: &str, mut lookahead_index: usize) -> Result<usize, String> {
-    if let Some(token) = input.chars().nth(lookahead_index) {
-        match token {
-            '+' | '-' => {
-                lookahead_index += 1;
-                lookahead_index = s_a(input, lookahead_index)?;
-                lookahead_index = s_a(input, lookahead_index)?;
-                Ok(lookahead_index)
+    fn parse_internal(&mut self) -> Result<bool, String> {
+        match self.next_token() {
+            Token::A => Ok(true),
+            Token::Plus | Token::Minus => {
+                if !self.parse_internal()? {
+                    return Ok(false);
+                }
+                if !self.parse_internal()? {
+                    return Ok(false);
+                }
+                Ok(true)
             }
-            'a' => {
-                lookahead_index += 1;
-                Ok(lookahead_index)
-            }
-            _ => Err(format!("Invalid token at position {}", lookahead_index)),
+            Token::Epsilon => Ok(false),
+            Token::Invalid => Err(format!(
+                "Syntax error: Invalid token at position {}",
+                self.lookahead_index
+            )),
         }
-    } else {
-        Err(format!("Expected more tokens"))
+    }
+
+    fn next_token(&mut self) -> Token {
+        if self.lookahead_index >= self.input.len() {
+            return Token::Epsilon;
+        }
+
+        match self.input[self.lookahead_index] {
+            'a' => {
+                self.lookahead_index += 1;
+                Token::A
+            }
+            '+' => {
+                self.lookahead_index += 1;
+                Token::Plus
+            }
+            '-' => {
+                self.lookahead_index += 1;
+                Token::Minus
+            }
+            _ => Token::Invalid,
+        }
     }
 }
 
@@ -49,27 +92,30 @@ mod tests {
     #[case("+++--+-+-+-+-+++-a-aaaaaaaaaaaaaaaaaa")]
     #[case("-aa")]
     fn test_2_4_1_a_valid(#[case] input: &str) -> Result<(), String> {
-        assert_eq!(a(input)?, ());
+        assert_eq!(ParserA::new(input).parse()?, ());
 
         Ok(())
     }
 
     #[rstest]
-    #[case("++aa", "Syntax Error: Expected more tokens")]
-    #[case("+a", "Syntax Error: Expected more tokens")]
-    #[case("+ab", "Syntax Error: Invalid token at position 2")]
-    #[case("+ba", "Syntax Error: Invalid token at position 1")]
-    #[case("--aa", "Syntax Error: Expected more tokens")]
-    #[case("-a", "Syntax Error: Expected more tokens")]
-    #[case("-ab", "Syntax Error: Invalid token at position 2")]
-    #[case("-ba", "Syntax Error: Invalid token at position 1")]
-    #[case("aa", "Syntax Error: Expression finished earlier than expected")]
-    #[case("b", "Syntax Error: Invalid token at position 0")]
+    #[case("++aa", "Syntax error: Invalid input")]
+    #[case("+a", "Syntax error: Invalid input")]
+    #[case("+ab", "Syntax error: Invalid token at position 2")]
+    #[case("+ba", "Syntax error: Invalid token at position 1")]
+    #[case("--aa", "Syntax error: Invalid input")]
+    #[case("-a", "Syntax error: Invalid input")]
+    #[case("-ab", "Syntax error: Invalid token at position 2")]
+    #[case("-ba", "Syntax error: Invalid token at position 1")]
+    #[case("aa", "Syntax error: Invalid input")]
+    #[case("b", "Syntax error: Invalid token at position 0")]
     fn test_2_4_1_a_invalid(
         #[case] input: &str,
         #[case] error_message: &str,
     ) -> Result<(), String> {
-        assert_eq!(a(input).unwrap_err(), error_message.to_string());
+        assert_eq!(
+            ParserA::new(input).parse().unwrap_err(),
+            error_message.to_string()
+        );
 
         Ok(())
     }

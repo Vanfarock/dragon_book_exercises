@@ -6,12 +6,12 @@ enum Token {
     Invalid,
 }
 
-pub struct Parser {
+pub struct ParserB {
     input: Vec<char>,
     lookahead_index: usize,
 }
 
-impl Parser {
+impl ParserB {
     // Recursive-descent parser for the following grammar:
     // S := S(S)S | ε
     // Since it is left-recursive, it may lead to infinite loop
@@ -21,7 +21,7 @@ impl Parser {
     // R := (S)S | ε
 
     pub fn new(input: &str) -> Self {
-        Parser {
+        ParserB {
             input: input.chars().collect(),
             lookahead_index: 0,
         }
@@ -97,7 +97,7 @@ mod tests {
     #[case("(())()")]
     #[case("(())(())(())")]
     fn test_2_4_1_b_valid(#[case] input: &str) -> Result<(), String> {
-        assert_eq!(Parser::new(input).parse()?, ());
+        assert_eq!(ParserB::new(input).parse()?, ());
         Ok(())
     }
 
@@ -111,7 +111,7 @@ mod tests {
     // #[case("()())", "Syntax error: Invalid input")]
     fn test_2_4_1_invalid(#[case] input: &str, #[case] error_message: &str) -> Result<(), String> {
         assert_eq!(
-            Parser::new(input).parse().unwrap_err(),
+            ParserB::new(input).parse().unwrap_err(),
             error_message.to_string()
         );
         Ok(())
