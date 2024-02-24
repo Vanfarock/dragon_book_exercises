@@ -1,7 +1,6 @@
-use ch02::ex2_4_1_b::ParserB;
-
-use ch02::ex2_4_1_a::ParserA;
-use ch02::ex2_4_1_c::ParserC;
+use ch02::recursive_descent_parser::ex2_4_1_a::ParserA;
+use ch02::recursive_descent_parser::ex2_4_1_b::ParserB;
+use ch02::recursive_descent_parser::ex2_4_1_c::ParserC;
 
 pub mod ch02;
 
