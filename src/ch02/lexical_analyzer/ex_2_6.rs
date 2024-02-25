@@ -109,7 +109,7 @@ pub struct Lexer {
 impl Lexer {
     pub fn new(input: &str) -> Self {
         let mut words = HashMap::new();
-        for reserved_kw in Lexer::get_reserved_key_words().into_iter() {
+        for reserved_kw in Lexer::get_reserved_keywords().into_iter() {
             words.insert(reserved_kw.get_lexeme().unwrap(), reserved_kw);
         }
 
@@ -120,7 +120,7 @@ impl Lexer {
         }
     }
 
-    fn get_reserved_key_words() -> Vec<Word> {
+    fn get_reserved_keywords() -> Vec<Word> {
         vec![
             Word::new(Tag::True, "true".to_string()),
             Word::new(Tag::False, "false".to_string()),
@@ -142,47 +142,24 @@ impl Lexer {
             let mut peek = self.input[self.peek_index];
 
             if self.is_whitespace(peek) {
-                self.peek_index += 1;
+                self.move_peek();
+                continue;
+            }
+
+            if self.is_comment(peek) {
+                self.handle_comment();
                 continue;
             }
 
             if peek.is_numeric() {
-                let mut value = peek.to_digit(10).unwrap();
-                self.peek_index += 1;
-                if self.peek_index < self.input.len() {
-                    peek = self.input[self.peek_index];
-
-                    while peek.is_numeric() && self.peek_index < self.input.len() - 1 {
-                        value = value * 10 + peek.to_digit(10).unwrap();
-                        self.peek_index += 1;
-                        peek = self.input[self.peek_index];
-                    }
-                }
-                return Box::new(Num::new(value));
+                return self.handle_number(&mut peek);
             }
 
             if peek.is_alphabetic() {
-                let mut word = peek.to_string();
-                self.peek_index += 1;
-                if self.peek_index < self.input.len() {
-                    peek = self.input[self.peek_index];
-
-                    while peek.is_alphanumeric() && self.peek_index < self.input.len() - 1 {
-                        word.push(peek);
-                        self.peek_index += 1;
-                        peek = self.input[self.peek_index];
-                    }
-                }
-                if let Some(word_token) = self.words.get(&word) {
-                    return Box::new(word_token.clone());
-                }
-
-                let new_identifier = Word::new(Tag::Identifier, word.to_string());
-                self.words.insert(word, new_identifier.clone());
-                return Box::new(new_identifier);
+                return self.handle_word(&mut peek);
             }
 
-            self.peek_index += 1;
+            self.move_peek();
             return Box::new(Unknown::new(peek));
         }
 
@@ -192,16 +169,105 @@ impl Lexer {
     fn is_whitespace(&self, peek: char) -> bool {
         peek == ' ' || peek == '\t' || peek == '\n'
     }
+
+    fn is_comment(&mut self, peek: char) -> bool {
+        if peek == '/' {
+            if self.move_peek() {
+                let next_peek = self.input[self.peek_index];
+                if next_peek == '/' {
+                    return true;
+                }
+
+                self.move_peek_reverse();
+            }
+        }
+        false
+    }
+
+    fn handle_comment(&mut self) {
+        while self.move_peek() {
+            if self.input[self.peek_index] == '\n' {
+                return;
+            }
+        }
+    }
+
+    fn handle_number(&mut self, peek: &mut char) -> Box<dyn Token> {
+        let mut value = peek.to_digit(10).unwrap();
+        if self.move_peek() {
+            *peek = self.input[self.peek_index];
+
+            while peek.is_numeric() {
+                value = value * 10 + peek.to_digit(10).unwrap();
+                if !self.move_peek() {
+                    break;
+                }
+                *peek = self.input[self.peek_index];
+            }
+        }
+        Box::new(Num::new(value))
+    }
+
+    fn handle_word(&mut self, peek: &mut char) -> Box<dyn Token> {
+        let mut word = peek.to_string();
+        if self.move_peek() {
+            *peek = self.input[self.peek_index];
+
+            while peek.is_alphanumeric() || *peek == '_' {
+                word.push(*peek);
+                if !self.move_peek() {
+                    break;
+                }
+                *peek = self.input[self.peek_index];
+            }
+        }
+        if let Some(word_token) = self.words.get(&word) {
+            return Box::new(word_token.clone());
+        }
+        let new_identifier = Word::new(Tag::Identifier, word.to_string());
+        self.words.insert(word, new_identifier.clone());
+        Box::new(new_identifier)
+    }
+
+    fn move_peek(&mut self) -> bool {
+        self.peek_index += 1;
+        self.peek_index < self.input.len()
+    }
+    fn move_peek_reverse(&mut self) {
+        self.peek_index -= 1;
+    }
 }
 
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-//     use rstest::rstest;
+#[cfg(test)]
+mod test {
+    use super::*;
+    use rstest::rstest;
 
-//     #[rstest]
-//     fn test_lexer() {
-//         let lexer = Lexer::new("hello = 12");
-//         assert_eq!(lexer.tokenize())
-//     }
-// }
+    #[rstest]
+    fn test_lexer() {
+        let mut lexer = Lexer::new(
+            "// random  comment \n   hello = 12    * 5\t + 3\n boolean_variable_=true | false //comment at the end",
+        );
+        let tokens: Vec<Box<dyn Token>> = lexer.tokenize();
+
+        let expected_values = vec![
+            (Tag::Identifier, Some("hello".to_string())),
+            (Tag::Unknown, Some("=".to_string())),
+            (Tag::Number, Some("12".to_string())),
+            (Tag::Unknown, Some("*".to_string())),
+            (Tag::Number, Some("5".to_string())),
+            (Tag::Unknown, Some("+".to_string())),
+            (Tag::Number, Some("3".to_string())),
+            (Tag::Identifier, Some("boolean_variable_".to_string())),
+            (Tag::Unknown, Some("=".to_string())),
+            (Tag::True, Some("true".to_string())),
+            (Tag::Unknown, Some("|".to_string())),
+            (Tag::False, Some("false".to_string())),
+        ];
+
+        for (i, token) in tokens.iter().enumerate() {
+            assert_eq!(token.get_tag(), expected_values[i].0);
+            assert_eq!(token.get_lexeme(), expected_values[i].1);
+        }
+    }
+}

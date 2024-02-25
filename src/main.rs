@@ -16,12 +16,13 @@ fn main() {
         Err(err) => println!("{}", err),
     }
 
-    match ParserC::new("0").parse() {
+    match ParserC::new("01").parse() {
         Ok(_) => println!("Success!"),
         Err(err) => println!("{}", err),
     }
 
-    let tokens = Lexer::new("test = 12").tokenize();
+    let tokens =
+        Lexer::new("// random  comment \n   hello = 12    * 5\t + 3\n boolean_variable_=true | false //comment at the end").tokenize();
     print_tokens(tokens);
 }
 
