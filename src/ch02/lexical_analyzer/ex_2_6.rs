@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub enum Tag {
     True,
     False,
     Number,
     Identifier,
     Unknown,
+    Epsilon,
 }
 
 type Lexeme = String;
@@ -81,6 +82,23 @@ impl Token for Unknown {
         Some(self.lexeme.to_string())
     }
 }
+pub struct Epsilon {}
+
+impl Epsilon {
+    fn new() -> Self {
+        Epsilon {}
+    }
+}
+
+impl Token for Epsilon {
+    fn get_tag(&self) -> Tag {
+        Tag::Epsilon
+    }
+
+    fn get_lexeme(&self) -> Option<String> {
+        None
+    }
+}
 
 pub struct Lexer {
     input: Vec<char>,
@@ -109,7 +127,17 @@ impl Lexer {
         ]
     }
 
-    pub fn scan(&mut self) -> Box<dyn Token> {
+    pub fn tokenize(&mut self) -> Vec<Box<dyn Token>> {
+        let mut tokens = Vec::new();
+        let mut next_token = self.scan();
+        while next_token.get_tag() != Tag::Epsilon {
+            tokens.push(next_token);
+            next_token = self.scan();
+        }
+        tokens
+    }
+
+    fn scan(&mut self) -> Box<dyn Token> {
         while self.peek_index < self.input.len() {
             let mut peek = self.input[self.peek_index];
 
@@ -121,12 +149,14 @@ impl Lexer {
             if peek.is_numeric() {
                 let mut value = peek.to_digit(10).unwrap();
                 self.peek_index += 1;
-                peek = self.input[self.peek_index];
-
-                while peek.is_numeric() {
-                    value = value * 10 + peek.to_digit(10).unwrap();
-                    self.peek_index += 1;
+                if self.peek_index < self.input.len() {
                     peek = self.input[self.peek_index];
+
+                    while peek.is_numeric() && self.peek_index < self.input.len() - 1 {
+                        value = value * 10 + peek.to_digit(10).unwrap();
+                        self.peek_index += 1;
+                        peek = self.input[self.peek_index];
+                    }
                 }
                 return Box::new(Num::new(value));
             }
@@ -134,25 +164,44 @@ impl Lexer {
             if peek.is_alphabetic() {
                 let mut word = peek.to_string();
                 self.peek_index += 1;
-                peek = self.input[self.peek_index];
-
-                while peek.is_alphanumeric() {
-                    word.push(peek);
-                    self.peek_index += 1;
+                if self.peek_index < self.input.len() {
                     peek = self.input[self.peek_index];
+
+                    while peek.is_alphanumeric() && self.peek_index < self.input.len() - 1 {
+                        word.push(peek);
+                        self.peek_index += 1;
+                        peek = self.input[self.peek_index];
+                    }
                 }
                 if let Some(word_token) = self.words.get(&word) {
                     return Box::new(word_token.clone());
                 }
+
+                let new_identifier = Word::new(Tag::Identifier, word.to_string());
+                self.words.insert(word, new_identifier.clone());
+                return Box::new(new_identifier);
             }
 
+            self.peek_index += 1;
             return Box::new(Unknown::new(peek));
         }
 
-        Box::new(Unknown::new(' '))
+        Box::new(Epsilon::new())
     }
 
     fn is_whitespace(&self, peek: char) -> bool {
         peek == ' ' || peek == '\t' || peek == '\n'
     }
 }
+
+// #[cfg(test)]
+// mod test {
+//     use super::*;
+//     use rstest::rstest;
+
+//     #[rstest]
+//     fn test_lexer() {
+//         let lexer = Lexer::new("hello = 12");
+//         assert_eq!(lexer.tokenize())
+//     }
+// }
