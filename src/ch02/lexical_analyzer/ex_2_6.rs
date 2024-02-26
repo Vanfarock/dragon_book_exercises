@@ -145,16 +145,18 @@ impl Lexer {
                 self.move_peek();
                 continue;
             }
-
-            if self.is_comment() {
-                self.handle_comment();
+            if self.is_single_line_comment() {
+                self.handle_single_line_comment();
+                continue;
+            }
+            if self.is_multi_line_comment() {
+                self.handle_multi_line_comment();
                 continue;
             }
 
             if peek.is_numeric() {
                 return self.handle_number();
             }
-
             if peek.is_alphabetic() {
                 return self.handle_word();
             }
@@ -171,34 +173,23 @@ impl Lexer {
         peek == ' ' || peek == '\t' || peek == '\n'
     }
 
-    fn is_comment(&mut self) -> bool {
+    fn is_single_line_comment(&mut self) -> bool {
         self.match_sequence("//")
     }
 
-    fn match_sequence(&mut self, expected_sequence: &str) -> bool {
-        let mut peek = self.input[self.peek_index];
-        let chars: Vec<char> = expected_sequence.chars().collect();
-        let mut moved = false;
-
-        for sequence_char in chars.into_iter() {
-            if peek == sequence_char {
-                if self.move_peek() {
-                    peek = self.input[self.peek_index];
-                    moved = true;
-                }
-            } else {
-                if moved {
-                    self.move_peek_reverse();
-                }
-                return false;
-            }
-        }
-        true
-    }
-
-    fn handle_comment(&mut self) {
+    fn handle_single_line_comment(&mut self) {
         while self.move_peek() {
             if self.input[self.peek_index] == '\n' {
+                return;
+            }
+        }
+    }
+    fn is_multi_line_comment(&mut self) -> bool {
+        self.match_sequence("/*")
+    }
+    fn handle_multi_line_comment(&mut self) {
+        while self.move_peek() {
+            if self.match_sequence("*/") {
                 return;
             }
         }
@@ -243,6 +234,27 @@ impl Lexer {
         Box::new(new_identifier)
     }
 
+    fn match_sequence(&mut self, expected_sequence: &str) -> bool {
+        let mut peek = self.input[self.peek_index];
+        let chars: Vec<char> = expected_sequence.chars().collect();
+        let mut moved = false;
+
+        for sequence_char in chars.into_iter() {
+            if peek == sequence_char {
+                if self.move_peek() {
+                    peek = self.input[self.peek_index];
+                    moved = true;
+                }
+            } else {
+                if moved {
+                    self.move_peek_reverse();
+                }
+                return false;
+            }
+        }
+        true
+    }
+
     fn move_peek(&mut self) -> bool {
         self.peek_index += 1;
         self.peek_index < self.input.len()
@@ -260,7 +272,11 @@ mod test {
     #[rstest]
     fn test_lexer() {
         let mut lexer = Lexer::new(
-            "// random  comment \n   hello = 12    * 5\t + 3\n boolean_variable_=true | false //comment at the end",
+            "// random  comment \n\
+             hello = 12    * 5\t + 3\n\
+             boolean_variable_=true | false //comment at the /* end\n\
+             /* test multiline comment\n\
+             commented_variable = 3 */",
         );
         let tokens: Vec<Box<dyn Token>> = lexer.tokenize();
 
