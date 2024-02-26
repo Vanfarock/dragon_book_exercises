@@ -6,6 +6,12 @@ pub enum Tag {
     False,
     Number,
     Identifier,
+    Less,
+    LessOrEqual,
+    Equal,
+    Different,
+    Greater,
+    GreaterOrEqual,
     Unknown,
     Epsilon,
 }
@@ -63,6 +69,27 @@ impl Token for Num {
     }
 }
 
+pub struct LogicalOperator {
+    tag: Tag,
+    lexeme: String,
+}
+
+impl LogicalOperator {
+    fn new(tag: Tag, lexeme: String) -> Self {
+        LogicalOperator { tag, lexeme }
+    }
+}
+
+impl Token for LogicalOperator {
+    fn get_tag(&self) -> Tag {
+        self.tag
+    }
+
+    fn get_lexeme(&self) -> Option<String> {
+        Some(self.lexeme.clone())
+    }
+}
+
 pub struct Unknown {
     lexeme: char,
 }
@@ -82,6 +109,7 @@ impl Token for Unknown {
         Some(self.lexeme.to_string())
     }
 }
+
 pub struct Epsilon {}
 
 impl Epsilon {
@@ -161,6 +189,10 @@ impl Lexer {
                 return self.handle_word();
             }
 
+            if let Some(logical_operator) = self.is_logical_operator() {
+                return Box::new(logical_operator);
+            }
+
             self.move_peek();
             return Box::new(Unknown::new(peek));
         }
@@ -234,6 +266,24 @@ impl Lexer {
         Box::new(new_identifier)
     }
 
+    fn is_logical_operator(&mut self) -> Option<LogicalOperator> {
+        if self.match_sequence("<=") {
+            Some(LogicalOperator::new(Tag::LessOrEqual, "<=".to_string()))
+        } else if self.match_sequence("==") {
+            Some(LogicalOperator::new(Tag::Equal, "==".to_string()))
+        } else if self.match_sequence("!=") {
+            Some(LogicalOperator::new(Tag::Different, "!=".to_string()))
+        } else if self.match_sequence(">=") {
+            Some(LogicalOperator::new(Tag::GreaterOrEqual, ">=".to_string()))
+        } else if self.match_sequence("<") {
+            Some(LogicalOperator::new(Tag::Less, "<".to_string()))
+        } else if self.match_sequence(">") {
+            Some(LogicalOperator::new(Tag::Greater, ">".to_string()))
+        } else {
+            None
+        }
+    }
+
     fn match_sequence(&mut self, expected_sequence: &str) -> bool {
         let mut peek = self.input[self.peek_index];
         let chars: Vec<char> = expected_sequence.chars().collect();
@@ -276,7 +326,8 @@ mod test {
              hello = 12    * 5\t + 3\n\
              boolean_variable_=true | false //comment at the /* end\n\
              /* test multiline comment\n\
-             commented_variable = 3 */",
+             commented_variable = 3 */\n
+             > >= < <= == !=",
         );
         let tokens: Vec<Box<dyn Token>> = lexer.tokenize();
 
@@ -293,6 +344,12 @@ mod test {
             (Tag::True, Some("true".to_string())),
             (Tag::Unknown, Some("|".to_string())),
             (Tag::False, Some("false".to_string())),
+            (Tag::Greater, Some(">".to_string())),
+            (Tag::GreaterOrEqual, Some(">=".to_string())),
+            (Tag::Less, Some("<".to_string())),
+            (Tag::LessOrEqual, Some("<=".to_string())),
+            (Tag::Equal, Some("==".to_string())),
+            (Tag::Different, Some("!=".to_string())),
         ];
 
         for (i, token) in tokens.iter().enumerate() {
