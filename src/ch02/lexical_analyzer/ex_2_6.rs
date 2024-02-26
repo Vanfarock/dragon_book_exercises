@@ -139,24 +139,24 @@ impl Lexer {
 
     fn scan(&mut self) -> Box<dyn Token> {
         while self.peek_index < self.input.len() {
-            let mut peek = self.input[self.peek_index];
+            let peek = self.input[self.peek_index];
 
-            if self.is_whitespace(peek) {
+            if self.is_whitespace() {
                 self.move_peek();
                 continue;
             }
 
-            if self.is_comment(peek) {
+            if self.is_comment() {
                 self.handle_comment();
                 continue;
             }
 
             if peek.is_numeric() {
-                return self.handle_number(&mut peek);
+                return self.handle_number();
             }
 
             if peek.is_alphabetic() {
-                return self.handle_word(&mut peek);
+                return self.handle_word();
             }
 
             self.move_peek();
@@ -166,22 +166,34 @@ impl Lexer {
         Box::new(Epsilon::new())
     }
 
-    fn is_whitespace(&self, peek: char) -> bool {
+    fn is_whitespace(&self) -> bool {
+        let peek = self.input[self.peek_index];
         peek == ' ' || peek == '\t' || peek == '\n'
     }
 
-    fn is_comment(&mut self, peek: char) -> bool {
-        if peek == '/' {
-            if self.move_peek() {
-                let next_peek = self.input[self.peek_index];
-                if next_peek == '/' {
-                    return true;
-                }
+    fn is_comment(&mut self) -> bool {
+        self.match_sequence("//")
+    }
 
-                self.move_peek_reverse();
+    fn match_sequence(&mut self, expected_sequence: &str) -> bool {
+        let mut peek = self.input[self.peek_index];
+        let chars: Vec<char> = expected_sequence.chars().collect();
+        let mut moved = false;
+
+        for sequence_char in chars.into_iter() {
+            if peek == sequence_char {
+                if self.move_peek() {
+                    peek = self.input[self.peek_index];
+                    moved = true;
+                }
+            } else {
+                if moved {
+                    self.move_peek_reverse();
+                }
+                return false;
             }
         }
-        false
+        true
     }
 
     fn handle_comment(&mut self) {
@@ -192,33 +204,35 @@ impl Lexer {
         }
     }
 
-    fn handle_number(&mut self, peek: &mut char) -> Box<dyn Token> {
+    fn handle_number(&mut self) -> Box<dyn Token> {
+        let mut peek = self.input[self.peek_index];
         let mut value = peek.to_digit(10).unwrap();
         if self.move_peek() {
-            *peek = self.input[self.peek_index];
+            peek = self.input[self.peek_index];
 
             while peek.is_numeric() {
                 value = value * 10 + peek.to_digit(10).unwrap();
                 if !self.move_peek() {
                     break;
                 }
-                *peek = self.input[self.peek_index];
+                peek = self.input[self.peek_index];
             }
         }
         Box::new(Num::new(value))
     }
 
-    fn handle_word(&mut self, peek: &mut char) -> Box<dyn Token> {
+    fn handle_word(&mut self) -> Box<dyn Token> {
+        let mut peek = self.input[self.peek_index];
         let mut word = peek.to_string();
         if self.move_peek() {
-            *peek = self.input[self.peek_index];
+            peek = self.input[self.peek_index];
 
-            while peek.is_alphanumeric() || *peek == '_' {
-                word.push(*peek);
+            while peek.is_alphanumeric() || peek == '_' {
+                word.push(peek);
                 if !self.move_peek() {
                     break;
                 }
-                *peek = self.input[self.peek_index];
+                peek = self.input[self.peek_index];
             }
         }
         if let Some(word_token) = self.words.get(&word) {
