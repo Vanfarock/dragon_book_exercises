@@ -1,144 +1,49 @@
 use std::collections::HashMap;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
-pub enum Tag {
+pub enum Word {
+    Identifier,
     True,
     False,
-    Number,
-    Identifier,
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
+pub enum LogicalOperator {
     Less,
     LessOrEqual,
     Equal,
     Different,
     Greater,
     GreaterOrEqual,
-    Unknown,
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub enum Token {
+    Word(Word, String),
+    Number(u32, u32),
+    LogicalOperator(LogicalOperator, String),
+    Unknown(String),
     Epsilon,
 }
 
 type Lexeme = String;
 
-pub trait Token {
-    fn get_tag(&self) -> Tag;
-    fn get_lexeme(&self) -> Option<String>;
-}
-
-#[derive(Clone)]
-pub struct Word {
-    tag: Tag,
-    lexeme: String,
-}
-
-impl Word {
-    fn new(tag: Tag, lexeme: String) -> Self {
-        Word { tag, lexeme }
-    }
-}
-
-impl Token for Word {
-    fn get_tag(&self) -> Tag {
-        self.tag
-    }
-
-    fn get_lexeme(&self) -> Option<String> {
-        Some(self.lexeme.clone())
-    }
-}
-
-pub struct Num {
-    tag: Tag,
-    value: u32,
-}
-
-impl Num {
-    fn new(value: u32) -> Self {
-        Num {
-            tag: Tag::Number,
-            value,
-        }
-    }
-}
-
-impl Token for Num {
-    fn get_tag(&self) -> Tag {
-        self.tag
-    }
-
-    fn get_lexeme(&self) -> Option<String> {
-        Some(self.value.to_string())
-    }
-}
-
-pub struct LogicalOperator {
-    tag: Tag,
-    lexeme: String,
-}
-
-impl LogicalOperator {
-    fn new(tag: Tag, lexeme: String) -> Self {
-        LogicalOperator { tag, lexeme }
-    }
-}
-
-impl Token for LogicalOperator {
-    fn get_tag(&self) -> Tag {
-        self.tag
-    }
-
-    fn get_lexeme(&self) -> Option<String> {
-        Some(self.lexeme.clone())
-    }
-}
-
-pub struct Unknown {
-    lexeme: char,
-}
-
-impl Unknown {
-    fn new(lexeme: char) -> Self {
-        Unknown { lexeme }
-    }
-}
-
-impl Token for Unknown {
-    fn get_tag(&self) -> Tag {
-        Tag::Unknown
-    }
-
-    fn get_lexeme(&self) -> Option<String> {
-        Some(self.lexeme.to_string())
-    }
-}
-
-pub struct Epsilon {}
-
-impl Epsilon {
-    fn new() -> Self {
-        Epsilon {}
-    }
-}
-
-impl Token for Epsilon {
-    fn get_tag(&self) -> Tag {
-        Tag::Epsilon
-    }
-
-    fn get_lexeme(&self) -> Option<String> {
-        None
-    }
-}
-
 pub struct Lexer {
     input: Vec<char>,
     peek_index: usize,
-    words: HashMap<Lexeme, Word>,
+    words: HashMap<Lexeme, Token>,
 }
 
 impl Lexer {
     pub fn new(input: &str) -> Self {
         let mut words = HashMap::new();
         for reserved_kw in Lexer::get_reserved_keywords().into_iter() {
-            words.insert(reserved_kw.get_lexeme().unwrap(), reserved_kw);
+            match &reserved_kw {
+                Token::Word(_, lexeme) => {
+                    words.insert(lexeme.clone(), reserved_kw);
+                }
+                _ => (),
+            }
         }
 
         Lexer {
@@ -148,24 +53,24 @@ impl Lexer {
         }
     }
 
-    fn get_reserved_keywords() -> Vec<Word> {
+    fn get_reserved_keywords() -> Vec<Token> {
         vec![
-            Word::new(Tag::True, "true".to_string()),
-            Word::new(Tag::False, "false".to_string()),
+            Token::Word(Word::True, "true".to_string()),
+            Token::Word(Word::False, "false".to_string()),
         ]
     }
 
-    pub fn tokenize(&mut self) -> Vec<Box<dyn Token>> {
+    pub fn tokenize(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
         let mut next_token = self.scan();
-        while next_token.get_tag() != Tag::Epsilon {
+        while next_token != Token::Epsilon {
             tokens.push(next_token);
             next_token = self.scan();
         }
         tokens
     }
 
-    fn scan(&mut self) -> Box<dyn Token> {
+    fn scan(&mut self) -> Token {
         while self.peek_index < self.input.len() {
             let peek = self.input[self.peek_index];
 
@@ -182,7 +87,7 @@ impl Lexer {
                 continue;
             }
 
-            if peek.is_numeric() {
+            if self.is_number() {
                 return self.handle_number();
             }
             if peek.is_alphabetic() {
@@ -190,14 +95,14 @@ impl Lexer {
             }
 
             if let Some(logical_operator) = self.is_logical_operator() {
-                return Box::new(logical_operator);
+                return logical_operator;
             }
 
             self.move_peek();
-            return Box::new(Unknown::new(peek));
+            return Token::Unknown(peek.to_string());
         }
 
-        Box::new(Epsilon::new())
+        Token::Epsilon
     }
 
     fn is_whitespace(&self) -> bool {
@@ -227,24 +132,61 @@ impl Lexer {
         }
     }
 
-    fn handle_number(&mut self) -> Box<dyn Token> {
+    fn is_number(&mut self) -> bool {
         let mut peek = self.input[self.peek_index];
-        let mut value = peek.to_digit(10).unwrap();
+        if peek.is_numeric() {
+            return true;
+        }
+
+        let mut is_numeric = false;
+        if peek == '.' {
+            if self.move_peek() {
+                peek = self.input[self.peek_index];
+
+                if peek.is_numeric() {
+                    is_numeric = true;
+                }
+            }
+            self.move_peek_reverse();
+        }
+        is_numeric
+    }
+
+    fn handle_number(&mut self) -> Token {
+        let mut peek = self.input[self.peek_index];
+        let mut is_float = peek == '.';
+        let mut integer = if is_float {
+            0
+        } else {
+            peek.to_digit(10).unwrap()
+        };
+        let mut decimal = 0;
+
         if self.move_peek() {
             peek = self.input[self.peek_index];
 
-            while peek.is_numeric() {
-                value = value * 10 + peek.to_digit(10).unwrap();
+            while peek.is_numeric() || peek == '.' {
+                if peek == '.' {
+                    if is_float {
+                        break;
+                    }
+                    is_float = true;
+                } else if is_float {
+                    decimal = decimal * 10 + peek.to_digit(10).unwrap();
+                } else {
+                    integer = integer * 10 + peek.to_digit(10).unwrap();
+                }
+
                 if !self.move_peek() {
                     break;
                 }
                 peek = self.input[self.peek_index];
             }
         }
-        Box::new(Num::new(value))
+        Token::Number(integer, decimal)
     }
 
-    fn handle_word(&mut self) -> Box<dyn Token> {
+    fn handle_word(&mut self) -> Token {
         let mut peek = self.input[self.peek_index];
         let mut word = peek.to_string();
         if self.move_peek() {
@@ -259,32 +201,51 @@ impl Lexer {
             }
         }
         if let Some(word_token) = self.words.get(&word) {
-            return Box::new(word_token.clone());
+            return word_token.clone();
         }
-        let new_identifier = Word::new(Tag::Identifier, word.to_string());
+        let new_identifier = Token::Word(Word::Identifier, word.to_string());
         self.words.insert(word, new_identifier.clone());
-        Box::new(new_identifier)
+        new_identifier
     }
 
-    fn is_logical_operator(&mut self) -> Option<LogicalOperator> {
+    fn is_logical_operator(&mut self) -> Option<Token> {
         if self.match_sequence("<=") {
-            Some(LogicalOperator::new(Tag::LessOrEqual, "<=".to_string()))
+            Some(Token::LogicalOperator(
+                LogicalOperator::LessOrEqual,
+                "<=".to_string(),
+            ))
         } else if self.match_sequence("==") {
-            Some(LogicalOperator::new(Tag::Equal, "==".to_string()))
+            Some(Token::LogicalOperator(
+                LogicalOperator::Equal,
+                "==".to_string(),
+            ))
         } else if self.match_sequence("!=") {
-            Some(LogicalOperator::new(Tag::Different, "!=".to_string()))
+            Some(Token::LogicalOperator(
+                LogicalOperator::Different,
+                "!=".to_string(),
+            ))
         } else if self.match_sequence(">=") {
-            Some(LogicalOperator::new(Tag::GreaterOrEqual, ">=".to_string()))
+            Some(Token::LogicalOperator(
+                LogicalOperator::GreaterOrEqual,
+                ">=".to_string(),
+            ))
         } else if self.match_sequence("<") {
-            Some(LogicalOperator::new(Tag::Less, "<".to_string()))
+            Some(Token::LogicalOperator(
+                LogicalOperator::Less,
+                "<".to_string(),
+            ))
         } else if self.match_sequence(">") {
-            Some(LogicalOperator::new(Tag::Greater, ">".to_string()))
+            Some(Token::LogicalOperator(
+                LogicalOperator::Greater,
+                ">".to_string(),
+            ))
         } else {
             None
         }
     }
 
     fn match_sequence(&mut self, expected_sequence: &str) -> bool {
+        let initial_peek_index = self.peek_index;
         let mut peek = self.input[self.peek_index];
         let chars: Vec<char> = expected_sequence.chars().collect();
         let mut moved = false;
@@ -297,7 +258,7 @@ impl Lexer {
                 }
             } else {
                 if moved {
-                    self.move_peek_reverse();
+                    self.move_peek_to(initial_peek_index);
                 }
                 return false;
             }
@@ -311,6 +272,9 @@ impl Lexer {
     }
     fn move_peek_reverse(&mut self) {
         self.peek_index -= 1;
+    }
+    fn move_peek_to(&mut self, new_peek: usize) {
+        self.peek_index = new_peek;
     }
 }
 
@@ -326,35 +290,46 @@ mod test {
              hello = 12    * 5\t + 3\n\
              boolean_variable_=true | false //comment at the /* end\n\
              /* test multiline comment\n\
-             commented_variable = 3 */\n
-             > >= < <= == !=",
+             commented_variable = 3 */\n\
+             > >= < <= == !=\n\
+             >>=<<===!=\n\
+             2. 3.14 .5.",
         );
-        let tokens: Vec<Box<dyn Token>> = lexer.tokenize();
+        let tokens: Vec<Token> = lexer.tokenize();
 
         let expected_values = vec![
-            (Tag::Identifier, Some("hello".to_string())),
-            (Tag::Unknown, Some("=".to_string())),
-            (Tag::Number, Some("12".to_string())),
-            (Tag::Unknown, Some("*".to_string())),
-            (Tag::Number, Some("5".to_string())),
-            (Tag::Unknown, Some("+".to_string())),
-            (Tag::Number, Some("3".to_string())),
-            (Tag::Identifier, Some("boolean_variable_".to_string())),
-            (Tag::Unknown, Some("=".to_string())),
-            (Tag::True, Some("true".to_string())),
-            (Tag::Unknown, Some("|".to_string())),
-            (Tag::False, Some("false".to_string())),
-            (Tag::Greater, Some(">".to_string())),
-            (Tag::GreaterOrEqual, Some(">=".to_string())),
-            (Tag::Less, Some("<".to_string())),
-            (Tag::LessOrEqual, Some("<=".to_string())),
-            (Tag::Equal, Some("==".to_string())),
-            (Tag::Different, Some("!=".to_string())),
+            Token::Word(Word::Identifier, "hello".to_string()),
+            Token::Unknown("=".to_string()),
+            Token::Number(12, 0),
+            Token::Unknown("*".to_string()),
+            Token::Number(5, 0),
+            Token::Unknown("+".to_string()),
+            Token::Number(3, 0),
+            Token::Word(Word::Identifier, "boolean_variable_".to_string()),
+            Token::Unknown("=".to_string()),
+            Token::Word(Word::True, "true".to_string()),
+            Token::Unknown("|".to_string()),
+            Token::Word(Word::False, "false".to_string()),
+            Token::LogicalOperator(LogicalOperator::Greater, ">".to_string()),
+            Token::LogicalOperator(LogicalOperator::GreaterOrEqual, ">=".to_string()),
+            Token::LogicalOperator(LogicalOperator::Less, "<".to_string()),
+            Token::LogicalOperator(LogicalOperator::LessOrEqual, "<=".to_string()),
+            Token::LogicalOperator(LogicalOperator::Equal, "==".to_string()),
+            Token::LogicalOperator(LogicalOperator::Different, "!=".to_string()),
+            Token::LogicalOperator(LogicalOperator::Greater, ">".to_string()),
+            Token::LogicalOperator(LogicalOperator::GreaterOrEqual, ">=".to_string()),
+            Token::LogicalOperator(LogicalOperator::Less, "<".to_string()),
+            Token::LogicalOperator(LogicalOperator::LessOrEqual, "<=".to_string()),
+            Token::LogicalOperator(LogicalOperator::Equal, "==".to_string()),
+            Token::LogicalOperator(LogicalOperator::Different, "!=".to_string()),
+            Token::Number(2, 0),
+            Token::Number(3, 14),
+            Token::Number(0, 5),
+            Token::Unknown(".".to_string()),
         ];
 
-        for (i, token) in tokens.iter().enumerate() {
-            assert_eq!(token.get_tag(), expected_values[i].0);
-            assert_eq!(token.get_lexeme(), expected_values[i].1);
+        for (i, token) in tokens.into_iter().enumerate() {
+            assert_eq!(token, expected_values[i]);
         }
     }
 }

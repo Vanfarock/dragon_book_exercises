@@ -21,17 +21,27 @@ fn main() {
         Err(err) => println!("{}", err),
     }
 
-    let tokens =
-        Lexer::new("// random  comment \n   hello = 12    * 5\t + 3\n boolean_variable_=true | false //comment at the end").tokenize();
+    let tokens = Lexer::new(
+        "// random  comment \n\
+        hello = 12    * 5\t + 3\n\
+        boolean_variable_=true | false //comment at the /* end\n\
+        /* test multiline comment\n\
+        commented_variable = 3 */\n
+        > >= < <= == !=\n
+        2. 3.14 .5",
+    )
+    .tokenize();
     print_tokens(tokens);
 }
 
-fn print_tokens(tokens: Vec<Box<dyn Token>>) {
+fn print_tokens(tokens: Vec<Token>) {
     for token in tokens.iter() {
-        if let Some(lexeme) = token.get_lexeme() {
-            println!("{:#?} - {}", token.get_tag(), lexeme);
-        } else {
-            println!("{:#?}", token.get_tag());
+        match token {
+            Token::Word(tag, lexeme) => println!("{:?} - {}", tag, lexeme),
+            Token::Number(integer, decimal) => println!("Number - {}.{}", integer, decimal),
+            Token::LogicalOperator(tag, lexeme) => println!("{:?} - {}", tag, lexeme),
+            Token::Unknown(lexeme) => println!("{}", lexeme),
+            Token::Epsilon => println!("Epsilon"),
         }
     }
 }
